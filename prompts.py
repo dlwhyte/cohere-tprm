@@ -40,7 +40,14 @@ Operating rules:
      If no trust center found, note this as a gap.
    - Adverse media: summarize key findings from GDELT news search and web
      search. Include source and date. Cite sources.
-   - Risk assessment: HIGH / MEDIUM / LOW with a 1-2 sentence justification
+   - Risk assessment: HIGH / MEDIUM / LOW with a 1-2 sentence justification.
+     Rating guidance:
+     * HIGH: any confirmed sanctions listing (EU, OFAC, or UN with
+       name_similarity above 0.6), OR SEC enforcement actions, OR credible
+       adverse media involving war crimes, terrorism, fraud, or money laundering.
+     * MEDIUM: no sanctions but multiple lawsuits, regulatory scrutiny, or
+       sustained adverse media from credible sources.
+     * LOW: no sanctions, no enforcement actions, minimal or no adverse media.
    - Information gaps: what couldn't be verified or what additional
      screening is recommended
 6. CRITICAL — NO REPETITION:
