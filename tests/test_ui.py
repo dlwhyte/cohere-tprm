@@ -9,24 +9,19 @@ import uvicorn
 from playwright.sync_api import sync_playwright
 
 
-MOCK_BRIEF = """## Entity summary
-Test Corp is a fictional company used for testing.
-
-## Sanctions screening results
-- **EU list**: No match found.
-- **OFAC SDN**: No match found.
-
-## Risk assessment
-**LOW** — No sanctions hits or adverse media found.
-
-## Information gaps
-- No screening performed on key individuals."""
+MOCK_EVENTS = [
+    {"type": "entity", "entity": "Test Corp"},
+    {"type": "tool", "tool": "sanctions_lookup", "label": "Checking sanctions lists"},
+    {"type": "tool", "tool": "web_search", "label": "Searching the web"},
+    {"type": "generating"},
+    {"type": "brief", "brief": "## Entity summary\nTest Corp is a fictional company.\n\n## Risk assessment\n**LOW** — No issues found."},
+]
 
 
 @pytest.fixture(scope="module")
 def server():
     """Start the FastAPI server in a background thread with mocked agent."""
-    with patch("app.run_agent", return_value=MOCK_BRIEF):
+    with patch("app.run_agent_streaming", return_value=iter(MOCK_EVENTS)):
         from app import app
 
         config = uvicorn.Config(app, host="127.0.0.1", port=8765, log_level="error")
@@ -56,6 +51,7 @@ def test_page_loads(server):
         assert page.title() == "TPRM Agent"
         assert page.locator("input#query").is_visible()
         assert page.locator("button#btn").is_visible()
+        assert page.locator(".sidebar").is_visible()
 
         browser.close()
 

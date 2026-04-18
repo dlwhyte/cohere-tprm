@@ -1,7 +1,7 @@
 """
 Cohere-powered TPRM agent.
 
-Tools: sanctions screening (sanctions.network) and web search (Tavily).
+Tools: sanctions screening, web search, trust center, adverse media, SEC EDGAR.
 Uses Cohere V2 multi-step tool use with content isolation.
 
 Run:
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import warnings
 
@@ -33,12 +34,94 @@ def _get_client() -> cohere.ClientV2:
     return cohere.ClientV2(os.environ["COHERE_API_KEY"])
 
 
+def _extract_entity(query: str) -> str:
+    """Best-effort extraction of the entity name from the user query."""
+    # Remove common preambles
+    cleaned = re.sub(
+        r"(?i)^(risk brief for|screen|check|look up|search for|brief on)\s+",
+        "",
+        query.strip(),
+    )
+    # Remove quotes and "the company" prefix
+    cleaned = re.sub(r"(?i)^the company\s+", "", cleaned)
+    cleaned = cleaned.strip("'\"")
+    return cleaned or query
+
+
+def _required_tools(entity: str) -> dict:
+    """Return the tool name -> args mapping for mandatory pre-screening."""
+    return {
+        "entity_lookup": {"company": entity},
+        "sanctions_lookup": {"name": entity},
+        "sec_filing_search": {"company": entity},
+        "sec_enforcement_search": {"company": entity},
+        "trust_center_search": {"company": entity},
+        "adverse_media": {"query": entity},
+        "web_search": {"query": entity},
+    }
+
+
+def _pre_screen(entity: str) -> dict:
+    """
+    Run all required tools upfront before the model starts.
+    Returns a dict of tool_name -> result.
+    """
+    results = {}
+
+    # Always run these tools
+    required_tools = _required_tools(entity)
+
+    for tool_name, args in required_tools.items():
+        print(f"[pre-screen] -> {tool_name}({args})")
+        try:
+            results[tool_name] = TOOL_REGISTRY[tool_name](**args)
+        except Exception as e:
+            results[tool_name] = {"error": f"{tool_name} raised: {e}"}
+
+    # If adverse_media failed, run a fallback web search with adverse keywords
+    adverse = results.get("adverse_media", {})
+    if "error" in adverse or adverse.get("article_count", 0) == 0:
+        fallback_query = f"{entity} scandal lawsuit penalty investigation"
+        print(f"[pre-screen] -> web_search (adverse fallback)({fallback_query})")
+        try:
+            results["adverse_media_fallback"] = TOOL_REGISTRY["web_search"](
+                query=fallback_query
+            )
+        except Exception as e:
+            results["adverse_media_fallback"] = {"error": str(e)}
+
+    return results
+
+
 def run_agent(user_query: str, max_steps: int = 8) -> str | None:
-    """Cohere V2 multi-step tool-use loop."""
+    """Cohere V2 multi-step tool-use loop with mandatory pre-screening."""
     co = _get_client()
+
+    # Extract entity and run all tools upfront
+    entity = _extract_entity(user_query)
+    print(f"[agent] entity: {entity}")
+    pre_results = _pre_screen(entity)
+
+    # Format pre-screen results as context for the model
+    context_parts = []
+    for tool_name, result in pre_results.items():
+        context_parts.append(
+            f"<tool_result tool=\"{tool_name}\">{json.dumps(result)}</tool_result>"
+        )
+    pre_screen_context = "\n\n".join(context_parts)
+
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_query},
+        {
+            "role": "user",
+            "content": (
+                f"{user_query}\n\n"
+                f"The following tool results have already been gathered for "
+                f"'{entity}'. Use ONLY this data to write the brief. Do NOT "
+                f"make up any facts. If a tool returned an error, note it as "
+                f"an information gap.\n\n{pre_screen_context}"
+            ),
+        },
     ]
 
     for step in range(max_steps):
@@ -105,6 +188,135 @@ def run_agent(user_query: str, max_steps: int = 8) -> str | None:
 
     print(f"\n[halted after {max_steps} steps without final answer]")
     return None
+
+
+TOOL_LABELS = {
+    "entity_lookup": "Looking up entity details",
+    "sanctions_lookup": "Checking sanctions lists",
+    "sec_filing_search": "Searching SEC filings",
+    "sec_enforcement_search": "Checking SEC enforcement actions",
+    "trust_center_search": "Searching trust centers",
+    "adverse_media": "Scanning adverse media",
+    "web_search": "Searching the web",
+}
+
+
+def run_agent_streaming(user_query: str, max_steps: int = 8):
+    """
+    Generator that yields status events during pre-screening and the final brief.
+    Events: {"type": "tool", "tool": "...", "label": "..."} during pre-screen,
+            {"type": "generating"} when model is writing,
+            {"type": "brief", "brief": "..."} on completion,
+            {"type": "error", "message": "..."} on failure.
+    """
+    entity = _extract_entity(user_query)
+    yield {"type": "entity", "entity": entity}
+
+    # Pre-screen with progress events
+    required_tools = _required_tools(entity)
+
+    pre_results = {}
+    for tool_name, args in required_tools.items():
+        label = TOOL_LABELS.get(tool_name, tool_name)
+        yield {"type": "tool", "tool": tool_name, "label": label}
+        try:
+            pre_results[tool_name] = TOOL_REGISTRY[tool_name](**args)
+        except Exception as e:
+            pre_results[tool_name] = {"error": f"{tool_name} raised: {e}"}
+
+    # Adverse media fallback
+    adverse = pre_results.get("adverse_media", {})
+    if "error" in adverse or adverse.get("article_count", 0) == 0:
+        fallback_query = f"{entity} scandal lawsuit penalty investigation"
+        yield {"type": "tool", "tool": "web_search", "label": "Searching adverse media (fallback)"}
+        try:
+            pre_results["adverse_media_fallback"] = TOOL_REGISTRY["web_search"](
+                query=fallback_query
+            )
+        except Exception as e:
+            pre_results["adverse_media_fallback"] = {"error": str(e)}
+
+    # Generate brief
+    yield {"type": "generating"}
+
+    context_parts = []
+    for tool_name, result in pre_results.items():
+        context_parts.append(
+            f"<tool_result tool=\"{tool_name}\">{json.dumps(result)}</tool_result>"
+        )
+    pre_screen_context = "\n\n".join(context_parts)
+
+    try:
+        co = _get_client()
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"{user_query}\n\n"
+                    f"The following tool results have already been gathered for "
+                    f"'{entity}'. Use ONLY this data to write the brief. Do NOT "
+                    f"make up any facts. If a tool returned an error, note it as "
+                    f"an information gap.\n\n{pre_screen_context}"
+                ),
+            },
+        ]
+
+        for step in range(max_steps):
+            resp = co.chat(model=MODEL, messages=messages, tools=TOOL_SCHEMAS)
+            msg = resp.message
+
+            if not msg.tool_calls:
+                final = "".join(
+                    c.text for c in (msg.content or [])
+                    if getattr(c, "type", "") == "text"
+                )
+                yield {"type": "brief", "brief": final}
+                return
+
+            messages.append({
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in msg.tool_calls
+                ],
+                "tool_plan": msg.tool_plan,
+            })
+
+            for tc in msg.tool_calls:
+                name = tc.function.name
+                try:
+                    args = json.loads(tc.function.arguments)
+                except json.JSONDecodeError:
+                    args = {}
+
+                if name not in TOOL_REGISTRY:
+                    result = {"error": f"tool '{name}' not in allowlist"}
+                else:
+                    try:
+                        result = TOOL_REGISTRY[name](**args)
+                    except TypeError as e:
+                        result = {"error": f"bad arguments to {name}: {e}"}
+                    except Exception as e:
+                        result = {"error": f"{name} raised: {e}"}
+
+                wrapped = f"<tool_result>{json.dumps(result)}</tool_result>"
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": wrapped,
+                })
+
+        yield {"type": "error", "message": f"Halted after {max_steps} steps"}
+    except Exception as e:
+        yield {"type": "error", "message": str(e)}
 
 
 if __name__ == "__main__":

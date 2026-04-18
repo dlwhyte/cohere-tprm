@@ -3,8 +3,8 @@
 from unittest.mock import patch, MagicMock
 
 from tools import (
-    sanctions_lookup, web_search, adverse_media,
-    sec_filing_search, sec_enforcement_search,
+    sanctions_lookup, web_search, entity_lookup, trust_center_search,
+    adverse_media, sec_filing_search, sec_enforcement_search,
     TOOL_REGISTRY, TOOL_SCHEMAS,
 )
 
@@ -136,6 +136,134 @@ def test_web_search_api_error(mock_post):
     mock_post.side_effect = Exception("timeout")
 
     result = web_search("test")
+
+    assert "error" in result
+    assert "timeout" in result["error"]
+
+
+# ---------- entity_lookup tests ----------
+
+MOCK_WIKI_RESPONSE = {
+    "title": "Shopify",
+    "description": "Canadian e-commerce company",
+    "extract": "Shopify Inc. is a Canadian multinational e-commerce company headquartered in Ottawa, Ontario.",
+}
+
+MOCK_ENTITY_TAVILY_RESPONSE = {
+    "results": [
+        {
+            "title": "Shopify Inc - Company Profile - GlobalData",
+            "url": "https://example.com/shopify-profile",
+            "content": "Founded in 2006 by Tobias Lutke. CEO: Tobias Lutke.",
+        },
+    ],
+}
+
+
+@patch.dict("os.environ", {"TAVILY_API_KEY": "test-key"})
+@patch("tools.httpx.post")
+@patch("tools.httpx.get")
+def test_entity_lookup_success(mock_get, mock_post):
+    # Wikipedia response
+    wiki_resp = MagicMock()
+    wiki_resp.status_code = 200
+    wiki_resp.json.return_value = MOCK_WIKI_RESPONSE
+    mock_get.return_value = wiki_resp
+
+    # Tavily response
+    tavily_resp = MagicMock()
+    tavily_resp.json.return_value = MOCK_ENTITY_TAVILY_RESPONSE
+    tavily_resp.raise_for_status.return_value = None
+    mock_post.return_value = tavily_resp
+
+    result = entity_lookup("Shopify")
+
+    assert result["query"] == "Shopify"
+    assert result["wikipedia"]["title"] == "Shopify"
+    assert "Canadian" in result["wikipedia"]["summary"]
+    assert len(result["corporate_details"]) == 1
+    assert "Tobias Lutke" in result["corporate_details"][0]["content"]
+
+
+@patch.dict("os.environ", {"TAVILY_API_KEY": "test-key"})
+@patch("tools.httpx.post")
+@patch("tools.httpx.get")
+def test_entity_lookup_no_wikipedia(mock_get, mock_post):
+    wiki_resp = MagicMock()
+    wiki_resp.status_code = 404
+    mock_get.return_value = wiki_resp
+
+    tavily_resp = MagicMock()
+    tavily_resp.json.return_value = {"results": []}
+    tavily_resp.raise_for_status.return_value = None
+    mock_post.return_value = tavily_resp
+
+    result = entity_lookup("Unknown Corp XYZ")
+
+    assert result["wikipedia"]["note"] == "No Wikipedia article found"
+
+
+@patch.dict("os.environ", {}, clear=True)
+@patch("tools.httpx.get")
+def test_entity_lookup_no_tavily_key(mock_get):
+    wiki_resp = MagicMock()
+    wiki_resp.status_code = 200
+    wiki_resp.json.return_value = MOCK_WIKI_RESPONSE
+    mock_get.return_value = wiki_resp
+
+    result = entity_lookup("Shopify")
+
+    assert "Canadian" in result["wikipedia"]["summary"]
+    assert result["corporate_details"][0]["note"] == "TAVILY_API_KEY not set"
+
+
+# ---------- trust_center_search tests ----------
+
+MOCK_TRUST_CENTER_RESPONSE = {
+    "results": [
+        {
+            "title": "Acme Corp Trust Center",
+            "url": "https://trust.acme.com",
+            "content": "SOC 2 Type II certified. ISO 27001:2022 certified.",
+        },
+        {
+            "title": "Acme Corp Security | G2",
+            "url": "https://www.g2.com/products/acme/security",
+            "content": "Acme Corp has completed SOC 2 and maintains PCI DSS compliance.",
+        },
+    ],
+}
+
+
+@patch.dict("os.environ", {"TAVILY_API_KEY": "test-key"})
+@patch("tools.httpx.post")
+def test_trust_center_search_success(mock_post):
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = MOCK_TRUST_CENTER_RESPONSE
+    mock_resp.raise_for_status.return_value = None
+    mock_post.return_value = mock_resp
+
+    result = trust_center_search("Acme Corp")
+
+    assert result["query"] == "Acme Corp"
+    assert result["result_count"] == 2
+    assert "SOC 2" in result["results"][0]["content"]
+
+
+@patch.dict("os.environ", {}, clear=True)
+def test_trust_center_search_missing_api_key():
+    result = trust_center_search("test")
+
+    assert "error" in result
+    assert "TAVILY_API_KEY" in result["error"]
+
+
+@patch.dict("os.environ", {"TAVILY_API_KEY": "test-key"})
+@patch("tools.httpx.post")
+def test_trust_center_search_api_error(mock_post):
+    mock_post.side_effect = Exception("timeout")
+
+    result = trust_center_search("test")
 
     assert "error" in result
     assert "timeout" in result["error"]

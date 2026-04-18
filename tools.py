@@ -92,6 +92,108 @@ def web_search(query: str) -> dict:
     return result
 
 
+def entity_lookup(company: str) -> dict:
+    """
+    Look up entity information: headquarters, incorporation, key people,
+    ownership structure. Combines Wikipedia summary with a targeted web search.
+    """
+    entity_data = {}
+
+    # 1. Wikipedia summary — free, reliable, structured
+    wiki_title = company.replace(" ", "_")
+    try:
+        r = httpx.get(
+            f"https://en.wikipedia.org/api/rest_v1/page/summary/{wiki_title}",
+            headers={"User-Agent": "cohere-tprm-learning/0.1"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            entity_data["wikipedia"] = {
+                "title": data.get("title"),
+                "description": data.get("description"),
+                "summary": data.get("extract", "")[:1000],
+            }
+        else:
+            entity_data["wikipedia"] = {"note": "No Wikipedia article found"}
+    except Exception as e:
+        entity_data["wikipedia"] = {"error": str(e)}
+
+    # 2. Targeted web search for corporate details
+    api_key = os.environ.get("TAVILY_API_KEY")
+    if api_key:
+        detail_query = (
+            f'"{company}" (headquarters OR founded OR CEO OR '
+            f"incorporation OR ownership OR subsidiary OR parent company)"
+        )
+        try:
+            r = httpx.post(
+                "https://api.tavily.com/search",
+                json={"api_key": api_key, "query": detail_query, "max_results": 5},
+                timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json()
+            entity_data["corporate_details"] = [
+                {
+                    "title": item.get("title"),
+                    "url": item.get("url"),
+                    "content": item.get("content"),
+                }
+                for item in data.get("results", [])[:5]
+            ]
+        except Exception as e:
+            entity_data["corporate_details"] = [{"error": str(e)}]
+    else:
+        entity_data["corporate_details"] = [{"note": "TAVILY_API_KEY not set"}]
+
+    result = {"query": company, **entity_data}
+    print(f"[DEBUG entity_lookup] {json.dumps(result, indent=2)}")
+    return result
+
+
+def trust_center_search(company: str) -> dict:
+    """
+    Search for a company's trust center, security certifications, and
+    compliance posture. Looks for SOC 2, ISO 27001, PCI DSS, GDPR, PIPEDA,
+    and other certifications. Uses Tavily API.
+    """
+    api_key = os.environ.get("TAVILY_API_KEY")
+    if not api_key:
+        return {"error": "TAVILY_API_KEY environment variable not set"}
+
+    search_query = (
+        f'"{company}" (trust center OR security certifications OR '
+        f"SOC 2 OR ISO 27001 OR PCI DSS OR GDPR OR PIPEDA OR "
+        f"penetration test OR security posture OR compliance)"
+    )
+
+    try:
+        r = httpx.post(
+            "https://api.tavily.com/search",
+            json={"api_key": api_key, "query": search_query, "max_results": 10},
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        err = {"error": f"trust_center_search failed: {e}"}
+        print(f"[DEBUG trust_center_search] {json.dumps(err, indent=2)}")
+        return err
+
+    results = []
+    for item in data.get("results", [])[:10]:
+        results.append({
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "content": item.get("content"),
+        })
+
+    result = {"query": company, "result_count": len(results), "results": results}
+    print(f"[DEBUG trust_center_search] {json.dumps(result, indent=2)}")
+    return result
+
+
 def adverse_media(query: str, timespan: str = "3months") -> dict:
     """
     Search GDELT global news for adverse media coverage of an entity.
@@ -242,6 +344,8 @@ def sec_enforcement_search(company: str) -> dict:
 TOOL_REGISTRY = {
     "sanctions_lookup": sanctions_lookup,
     "web_search": web_search,
+    "entity_lookup": entity_lookup,
+    "trust_center_search": trust_center_search,
     "adverse_media": adverse_media,
     "sec_filing_search": sec_filing_search,
     "sec_enforcement_search": sec_enforcement_search,
@@ -291,6 +395,50 @@ TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "entity_lookup",
+            "description": (
+                "Look up entity information: who they are, where headquartered, "
+                "when founded, key people (CEO, founders), ownership structure, "
+                "parent company, and subsidiaries. Combines Wikipedia data with "
+                "corporate detail searches. Use this to populate the Entity summary."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {
+                        "type": "string",
+                        "description": "Company name to look up.",
+                    },
+                },
+                "required": ["company"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "trust_center_search",
+            "description": (
+                "Search for a company's trust center, security certifications, "
+                "and compliance posture. Looks for SOC 2, ISO 27001, PCI DSS, "
+                "GDPR, PIPEDA, penetration test results, and other security "
+                "credentials. Use this to assess the vendor's security maturity."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {
+                        "type": "string",
+                        "description": "Company name to search for.",
+                    },
+                },
+                "required": ["company"],
             },
         },
     },

@@ -9,132 +9,282 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f5f5f5;
+      background: #f0f2f5;
       color: #1a1a1a;
       min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
 
     header {
       background: #1a1a2e;
       color: #fff;
-      padding: 1.5rem 2rem;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
     }
 
-    header h1 { font-size: 1.4rem; font-weight: 600; }
-    header p { font-size: 0.85rem; color: #aaa; margin-top: 0.25rem; }
+    header h1 { font-size: 1.2rem; font-weight: 600; }
+    header p { font-size: 0.8rem; color: #8888aa; }
 
-    main { max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+    .layout {
+      display: flex;
+      flex: 1;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+      gap: 1rem;
+      padding: 1.5rem 1rem;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 260px;
+      flex-shrink: 0;
+    }
+
+    .sidebar h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #666;
+      margin-bottom: 0.75rem;
+      padding: 0 0.5rem;
+    }
+
+    .history-list {
+      list-style: none;
+    }
+
+    .history-list li {
+      padding: 0.6rem 0.75rem;
+      font-size: 0.85rem;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #444;
+      transition: background 0.15s;
+    }
+
+    .history-list li:hover { background: #e0e0e0; }
+    .history-list li.active { background: #d0d4f0; color: #1a1a2e; font-weight: 500; }
+
+    .history-empty {
+      font-size: 0.8rem;
+      color: #999;
+      padding: 0.5rem;
+      font-style: italic;
+    }
+
+    /* Main content */
+    .main { flex: 1; min-width: 0; }
 
     .input-group {
       display: flex;
       gap: 0.5rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
     }
 
     input[type="text"] {
       flex: 1;
-      padding: 0.75rem 1rem;
-      font-size: 1rem;
+      padding: 0.7rem 1rem;
+      font-size: 0.95rem;
       border: 1px solid #ccc;
       border-radius: 6px;
       outline: none;
+      background: #fff;
     }
 
-    input[type="text"]:focus { border-color: #1a1a2e; }
+    input[type="text"]:focus { border-color: #1a1a2e; box-shadow: 0 0 0 2px rgba(26,26,46,0.1); }
 
     button {
-      padding: 0.75rem 1.5rem;
-      font-size: 1rem;
+      padding: 0.7rem 1.5rem;
+      font-size: 0.95rem;
       background: #1a1a2e;
       color: #fff;
       border: none;
       border-radius: 6px;
       cursor: pointer;
+      font-weight: 500;
     }
 
     button:hover { background: #16213e; }
-    button:disabled { background: #888; cursor: not-allowed; }
+    button:disabled { background: #999; cursor: not-allowed; }
 
-    .status {
-      padding: 1rem;
+    /* Progress */
+    .progress {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
       margin-bottom: 1rem;
-      border-radius: 6px;
-      font-size: 0.9rem;
       display: none;
     }
 
-    .status.loading {
-      display: block;
-      background: #e8f0fe;
+    .progress.visible { display: block; }
+
+    .progress-title {
+      font-size: 0.85rem;
+      font-weight: 600;
       color: #1a1a2e;
+      margin-bottom: 0.75rem;
     }
 
-    .status.error {
-      display: block;
+    .progress-steps {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .progress-step {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: #666;
+    }
+
+    .progress-step .icon {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .progress-step.done .icon { color: #2e7d32; }
+    .progress-step.active .icon { color: #1a1a2e; }
+    .progress-step.active { color: #1a1a2e; font-weight: 500; }
+
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #ddd;
+      border-top-color: #1a1a2e;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    .error-box {
       background: #fdecea;
+      border: 1px solid #f5c6cb;
       color: #b71c1c;
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      display: none;
     }
 
+    .error-box.visible { display: block; }
+
+    /* Brief */
     .brief {
       background: #fff;
       border: 1px solid #ddd;
       border-radius: 8px;
-      padding: 1.5rem 2rem;
-      line-height: 1.6;
+      padding: 2rem 2.5rem;
+      line-height: 1.7;
       display: none;
     }
 
     .brief.visible { display: block; }
 
     .brief h2 {
-      font-size: 1.1rem;
-      margin-top: 1.25rem;
+      font-size: 1rem;
+      margin-top: 1.5rem;
       margin-bottom: 0.5rem;
       color: #1a1a2e;
+      padding-bottom: 0.3rem;
+      border-bottom: 1px solid #eee;
     }
 
     .brief h2:first-child { margin-top: 0; }
-
-    .brief p { margin-bottom: 0.5rem; }
-
-    .brief ul { margin: 0.5rem 0 0.5rem 1.5rem; }
-    .brief li { margin-bottom: 0.25rem; }
-
+    .brief p { margin-bottom: 0.5rem; font-size: 0.9rem; }
+    .brief ul { margin: 0.5rem 0 0.75rem 1.5rem; }
+    .brief li { margin-bottom: 0.3rem; font-size: 0.9rem; }
     .brief strong { color: #1a1a2e; }
+
+    .brief .risk-high { color: #c62828; font-weight: 700; }
+    .brief .risk-medium { color: #ef6c00; font-weight: 700; }
+    .brief .risk-low { color: #2e7d32; font-weight: 700; }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>TPRM Agent</h1>
-    <p>Third-Party Risk Management — powered by Cohere</p>
+    <div>
+      <h1>TPRM Agent</h1>
+      <p>Third-Party Risk Management</p>
+    </div>
   </header>
 
-  <main>
-    <form id="form" class="input-group">
-      <input type="text" id="query" placeholder="e.g. Risk brief for Wagner Group" autofocus>
-      <button type="submit" id="btn">Run</button>
-    </form>
+  <div class="layout">
+    <aside class="sidebar">
+      <h3>Query History</h3>
+      <ul id="history" class="history-list"></ul>
+      <p id="history-empty" class="history-empty">No queries yet</p>
+    </aside>
 
-    <div id="status" class="status"></div>
-    <div id="brief" class="brief"></div>
-  </main>
+    <div class="main">
+      <form id="form" class="input-group">
+        <input type="text" id="query" placeholder="e.g. Risk brief for Shopify" autofocus>
+        <button type="submit" id="btn">Run</button>
+      </form>
+
+      <div id="progress" class="progress">
+        <div class="progress-title">Screening entity...</div>
+        <ul id="progress-steps" class="progress-steps"></ul>
+      </div>
+
+      <div id="error" class="error-box"></div>
+      <div id="brief" class="brief"></div>
+    </div>
+  </div>
 
   <script>
     const form = document.getElementById("form");
     const input = document.getElementById("query");
     const btn = document.getElementById("btn");
-    const status = document.getElementById("status");
+    const progress = document.getElementById("progress");
+    const progressSteps = document.getElementById("progress-steps");
+    const errorBox = document.getElementById("error");
     const brief = document.getElementById("brief");
+    const historyList = document.getElementById("history");
+    const historyEmpty = document.getElementById("history-empty");
+
+    let history = JSON.parse(localStorage.getItem("tprm_history") || "[]");
+    let briefCache = JSON.parse(localStorage.getItem("tprm_briefs") || "{}");
+
+    renderHistory();
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const query = input.value.trim();
       if (!query) return;
+      runQuery(query);
+    });
 
+    async function runQuery(query) {
       btn.disabled = true;
       brief.classList.remove("visible");
-      status.className = "status loading";
-      status.textContent = "Running agent... this may take a minute.";
+      errorBox.classList.remove("visible");
+      progress.classList.add("visible");
+      progressSteps.innerHTML = "";
+
+      input.value = query;
 
       try {
         const resp = await fetch("/api/brief", {
@@ -143,35 +293,141 @@
           body: JSON.stringify({ query }),
         });
 
-        const data = await resp.json();
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-        if (data.error) {
-          status.className = "status error";
-          status.textContent = data.error;
-        } else {
-          status.className = "status";
-          brief.innerHTML = markdownToHtml(data.brief);
-          brief.classList.add("visible");
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = JSON.parse(line.slice(6));
+            handleEvent(data, query);
+          }
         }
       } catch (err) {
-        status.className = "status error";
-        status.textContent = "Request failed: " + err.message;
+        errorBox.textContent = "Connection failed: " + err.message;
+        errorBox.classList.add("visible");
       } finally {
         btn.disabled = false;
+        progress.classList.remove("visible");
       }
-    });
+    }
+
+    function handleEvent(data, query) {
+      if (data.type === "entity") {
+        progress.querySelector(".progress-title").textContent =
+          `Screening: ${data.entity}`;
+      }
+
+      if (data.type === "tool") {
+        // Mark previous active step as done
+        const active = progressSteps.querySelector(".active");
+        if (active) {
+          active.classList.remove("active");
+          active.classList.add("done");
+          active.querySelector(".icon").innerHTML = svgCheck;
+        }
+
+        const li = document.createElement("li");
+        li.className = "progress-step active";
+        li.innerHTML = `<span class="icon"><div class="spinner"></div></span>${data.label}`;
+        progressSteps.appendChild(li);
+      }
+
+      if (data.type === "generating") {
+        const active = progressSteps.querySelector(".active");
+        if (active) {
+          active.classList.remove("active");
+          active.classList.add("done");
+          active.querySelector(".icon").innerHTML = svgCheck;
+        }
+
+        const li = document.createElement("li");
+        li.className = "progress-step active";
+        li.innerHTML = `<span class="icon"><div class="spinner"></div></span>Generating brief...`;
+        progressSteps.appendChild(li);
+      }
+
+      if (data.type === "brief") {
+        progress.classList.remove("visible");
+        brief.innerHTML = markdownToHtml(data.brief);
+        brief.classList.add("visible");
+        addToHistory(query, data.brief);
+      }
+
+      if (data.type === "error") {
+        progress.classList.remove("visible");
+        errorBox.textContent = data.message;
+        errorBox.classList.add("visible");
+      }
+    }
+
+    function addToHistory(query, briefText) {
+      // Remove duplicate
+      history = history.filter(h => h.query !== query);
+      history.unshift({ query, timestamp: Date.now() });
+      if (history.length > 20) history = history.slice(0, 20);
+      localStorage.setItem("tprm_history", JSON.stringify(history));
+      briefCache[query] = briefText;
+      localStorage.setItem("tprm_briefs", JSON.stringify(briefCache));
+      renderHistory();
+    }
+
+    function renderHistory() {
+      historyList.innerHTML = "";
+      historyEmpty.style.display = history.length ? "none" : "block";
+
+      for (const item of history) {
+        const li = document.createElement("li");
+        li.textContent = item.query;
+        li.title = item.query;
+        li.addEventListener("click", () => {
+          // If we have a cached brief, show it; otherwise re-run
+          if (briefCache[item.query]) {
+            input.value = item.query;
+            brief.innerHTML = markdownToHtml(briefCache[item.query]);
+            brief.classList.add("visible");
+            errorBox.classList.remove("visible");
+            progress.classList.remove("visible");
+
+            // Mark active
+            historyList.querySelectorAll("li").forEach(l => l.classList.remove("active"));
+            li.classList.add("active");
+          } else {
+            runQuery(item.query);
+          }
+        });
+        historyList.appendChild(li);
+      }
+    }
+
+    const svgCheck = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
 
     function markdownToHtml(md) {
       if (!md) return "";
-      return md
+      let html = md
         .replace(/^## (.+)$/gm, "<h2>$1</h2>")
         .replace(/^# (.+)$/gm, "<h2>$1</h2>")
+        .replace(/\*\*(HIGH)\*\*/g, '<strong class="risk-high">HIGH</strong>')
+        .replace(/\*\*(MEDIUM)\*\*/g, '<strong class="risk-medium">MEDIUM</strong>')
+        .replace(/\*\*(LOW)\*\*/g, '<strong class="risk-low">LOW</strong>')
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
         .replace(/^- (.+)$/gm, "<li>$1</li>")
-        .replace(/(<li>.*<\/li>\n?)+/g, (m) => "<ul>" + m + "</ul>")
+        .replace(/(<li>.*<\/li>\n?)+/gs, (m) => "<ul>" + m + "</ul>")
         .replace(/\n{2,}/g, "</p><p>")
         .replace(/^(?!<[hul])(.+)$/gm, "<p>$1</p>")
         .replace(/<p><\/p>/g, "");
+      return html;
     }
   </script>
 </body>
