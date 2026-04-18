@@ -26,12 +26,16 @@ from tools import TOOL_REGISTRY, TOOL_SCHEMAS
 
 load_dotenv()
 
-co = cohere.ClientV2(os.environ["COHERE_API_KEY"])
 MODEL = "command-r-plus-08-2024"
+
+
+def _get_client() -> cohere.ClientV2:
+    return cohere.ClientV2(os.environ["COHERE_API_KEY"])
 
 
 def run_agent(user_query: str, max_steps: int = 8) -> str | None:
     """Cohere V2 multi-step tool-use loop."""
+    co = _get_client()
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_query},
