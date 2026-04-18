@@ -4,8 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+import time
+from difflib import SequenceMatcher
 
 import httpx
+
+
+def _name_similarity(query: str, names: list[str]) -> float:
+    """Return the best fuzzy match score (0-1) between query and a list of names."""
+    query_lower = query.lower()
+    best = 0.0
+    for name in names:
+        score = SequenceMatcher(None, query_lower, name.lower()).ratio()
+        best = max(best, score)
+    return round(best, 2)
 
 
 def sanctions_lookup(name: str) -> dict:
@@ -29,9 +41,11 @@ def sanctions_lookup(name: str) -> dict:
 
     hits = []
     for hit in data[:5]:
+        names = hit.get("names", [])
         hits.append({
             "id": hit.get("source_id"),
-            "names": hit.get("names", []),
+            "names": names,
+            "name_similarity": _name_similarity(name, names),
             "type": hit.get("target_type"),
             "source": hit.get("source"),
             "listed_on": hit.get("listed_on"),
@@ -78,10 +92,159 @@ def web_search(query: str) -> dict:
     return result
 
 
+def adverse_media(query: str, timespan: str = "3months") -> dict:
+    """
+    Search GDELT global news for adverse media coverage of an entity.
+    Free API, no key required. Searches for the entity name combined with
+    adverse keywords to surface controversies, legal issues, and scandals.
+    """
+    gdelt_query = f'"{query}" (scandal OR fraud OR lawsuit OR penalty OR violation OR sanction OR investigation OR settlement)'
+    params = {
+        "query": gdelt_query,
+        "mode": "artlist",
+        "format": "json",
+        "maxrecords": 10,
+        "timespan": timespan,
+        "sort": "datedesc",
+    }
+
+    data = None
+    for attempt in range(3):
+        try:
+            r = httpx.get(
+                "https://api.gdeltproject.org/api/v2/doc/doc",
+                params=params,
+                timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json()
+            break
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429 and attempt < 2:
+                time.sleep(2 ** attempt)
+                continue
+            err = {"error": f"adverse_media failed: {e}"}
+            print(f"[DEBUG adverse_media] {json.dumps(err, indent=2)}")
+            return err
+        except Exception as e:
+            err = {"error": f"adverse_media failed: {e}"}
+            print(f"[DEBUG adverse_media] {json.dumps(err, indent=2)}")
+            return err
+
+    articles = []
+    for art in data.get("articles", [])[:10]:
+        articles.append({
+            "title": art.get("title"),
+            "url": art.get("url"),
+            "source": art.get("domain"),
+            "date": art.get("seendate", "")[:8],
+            "language": art.get("language"),
+            "country": art.get("sourcecountry"),
+        })
+
+    result = {"query": query, "article_count": len(articles), "articles": articles}
+    print(f"[DEBUG adverse_media] {json.dumps(result, indent=2)}")
+    return result
+
+
+EDGAR_BASE = "https://efts.sec.gov/LATEST/search-index"
+EDGAR_HEADERS = {"User-Agent": "cohere-tprm-learning/0.1 dlwhyte@gmail.com"}
+
+
+def sec_filing_search(company: str) -> dict:
+    """
+    Search SEC EDGAR for company filings (10-K, 10-Q, 8-K).
+    Free API, no key required. US-listed companies only.
+    """
+    try:
+        r = httpx.get(
+            EDGAR_BASE,
+            params={
+                "q": f'"{company}"',
+                "forms": "10-K,10-Q,8-K",
+                "dateRange": "custom",
+                "startdt": "2020-01-01",
+                "enddt": "2026-12-31",
+            },
+            headers=EDGAR_HEADERS,
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        err = {"error": f"sec_filing_search failed: {e}"}
+        print(f"[DEBUG sec_filing_search] {json.dumps(err, indent=2)}")
+        return err
+
+    raw_hits = data.get("hits", {}).get("hits", [])
+    total = data.get("hits", {}).get("total", {}).get("value", 0)
+
+    filings = []
+    for hit in raw_hits[:10]:
+        src = hit.get("_source", {})
+        filings.append({
+            "entity": (src.get("display_names") or ["Unknown"])[0],
+            "form_type": (src.get("root_forms") or ["Unknown"])[0],
+            "file_date": src.get("file_date"),
+            "period_ending": src.get("period_ending"),
+            "description": src.get("file_description"),
+        })
+
+    result = {"query": company, "total_filings": total, "filings": filings}
+    print(f"[DEBUG sec_filing_search] {json.dumps(result, indent=2)}")
+    return result
+
+
+def sec_enforcement_search(company: str) -> dict:
+    """
+    Search SEC EDGAR filings for mentions of enforcement actions, penalties,
+    or violations related to a company. Free API, no key required.
+    """
+    try:
+        r = httpx.get(
+            EDGAR_BASE,
+            params={
+                "q": f'"{company}" AND ("enforcement action" OR "penalty" OR '
+                     f'"violation" OR "cease and desist" OR "settlement")',
+                "dateRange": "custom",
+                "startdt": "2020-01-01",
+                "enddt": "2026-12-31",
+            },
+            headers=EDGAR_HEADERS,
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        err = {"error": f"sec_enforcement_search failed: {e}"}
+        print(f"[DEBUG sec_enforcement_search] {json.dumps(err, indent=2)}")
+        return err
+
+    raw_hits = data.get("hits", {}).get("hits", [])
+    total = data.get("hits", {}).get("total", {}).get("value", 0)
+
+    filings = []
+    for hit in raw_hits[:10]:
+        src = hit.get("_source", {})
+        filings.append({
+            "entity": (src.get("display_names") or ["Unknown"])[0],
+            "form_type": (src.get("root_forms") or ["Unknown"])[0],
+            "file_date": src.get("file_date"),
+            "description": src.get("file_description"),
+        })
+
+    result = {"query": company, "total_hits": total, "filings": filings}
+    print(f"[DEBUG sec_enforcement_search] {json.dumps(result, indent=2)}")
+    return result
+
+
 # Registry: tool name -> callable. This is the allowlist.
 TOOL_REGISTRY = {
     "sanctions_lookup": sanctions_lookup,
     "web_search": web_search,
+    "adverse_media": adverse_media,
+    "sec_filing_search": sec_filing_search,
+    "sec_enforcement_search": sec_enforcement_search,
 }
 
 # Schemas exposed to the model. JSON Schema inside Cohere's tool spec.
@@ -93,8 +256,9 @@ TOOL_SCHEMAS = [
             "description": (
                 "Search US OFAC SDN, UN Security Council, and EU sanctions lists "
                 "for a company or person. Uses fuzzy name matching and returns up "
-                "to 5 potential matches. A hit is not a confirmed match — inspect "
-                "the names, source, and remarks fields to judge relevance."
+                "to 5 potential matches with a name_similarity score (0-1). Only "
+                "treat hits with similarity above 0.6 as relevant. Lower scores "
+                "are likely false positives — note them as non-matches."
             ),
             "parameters": {
                 "type": "object",
@@ -127,6 +291,78 @@ TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "adverse_media",
+            "description": (
+                "Search GDELT global news database for adverse media coverage of "
+                "a company or person. Automatically filters for scandal, fraud, "
+                "lawsuit, penalty, and investigation keywords. Returns up to 10 "
+                "recent articles with titles, URLs, dates, and sources."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Entity or topic to search for.",
+                    },
+                    "timespan": {
+                        "type": "string",
+                        "description": (
+                            "How far back to search. Examples: '1week', '1month', "
+                            "'3months'. Default '3months'."
+                        ),
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sec_filing_search",
+            "description": (
+                "Search SEC EDGAR for company filings (10-K annual reports, "
+                "10-Q quarterly reports, 8-K material events). US-listed "
+                "companies only. Use this to verify a company exists as a "
+                "public entity and review its disclosure history."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {
+                        "type": "string",
+                        "description": "Company name to search for.",
+                    },
+                },
+                "required": ["company"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sec_enforcement_search",
+            "description": (
+                "Search SEC EDGAR filings for mentions of enforcement actions, "
+                "penalties, violations, or settlements related to a company. "
+                "Use this to identify regulatory risk and compliance history."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {
+                        "type": "string",
+                        "description": "Company name to search for.",
+                    },
+                },
+                "required": ["company"],
             },
         },
     },
