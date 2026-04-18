@@ -39,10 +39,7 @@
     }
 
     /* Sidebar */
-    .sidebar {
-      width: 260px;
-      flex-shrink: 0;
-    }
+    .sidebar { width: 260px; flex-shrink: 0; }
 
     .sidebar h3 {
       font-size: 0.75rem;
@@ -53,24 +50,53 @@
       padding: 0 0.5rem;
     }
 
-    .history-list {
-      list-style: none;
-    }
+    .history-list { list-style: none; }
 
     .history-list li {
-      padding: 0.6rem 0.75rem;
+      padding: 0.5rem 0.75rem;
       font-size: 0.85rem;
       border-radius: 6px;
       cursor: pointer;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       color: #444;
       transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
 
     .history-list li:hover { background: #e0e0e0; }
     .history-list li.active { background: #d0d4f0; color: #1a1a2e; font-weight: 500; }
+
+    .history-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .history-query {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .history-time {
+      font-size: 0.7rem;
+      color: #999;
+      margin-top: 0.1rem;
+    }
+
+    .risk-badge {
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 0.15rem 0.4rem;
+      border-radius: 10px;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .risk-badge.high { background: #fdecea; color: #c62828; }
+    .risk-badge.medium { background: #fff3e0; color: #ef6c00; }
+    .risk-badge.low { background: #e8f5e9; color: #2e7d32; }
 
     .history-empty {
       font-size: 0.8rem;
@@ -113,6 +139,42 @@
 
     button:hover { background: #16213e; }
     button:disabled { background: #999; cursor: not-allowed; }
+
+    /* Empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4rem 2rem;
+      color: #888;
+    }
+
+    .empty-state p {
+      font-size: 1.05rem;
+      margin-bottom: 1.25rem;
+      color: #666;
+    }
+
+    .example-chips {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .example-chip {
+      padding: 0.45rem 0.9rem;
+      font-size: 0.8rem;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      cursor: pointer;
+      color: #1a1a2e;
+      transition: all 0.15s;
+    }
+
+    .example-chip:hover { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
 
     /* Progress */
     .progress {
@@ -186,6 +248,23 @@
 
     .error-box.visible { display: block; }
 
+    /* Export bar */
+    .export-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .export-bar button {
+      padding: 0.4rem 0.8rem;
+      font-size: 0.75rem;
+      background: #f0f2f5;
+      color: #444;
+      border: 1px solid #ccc;
+    }
+
+    .export-bar button:hover { background: #e0e0e0; }
+
     /* Brief */
     .brief {
       background: #fff;
@@ -198,16 +277,37 @@
 
     .brief.visible { display: block; }
 
-    .brief h2 {
-      font-size: 1rem;
-      margin-top: 1.5rem;
-      margin-bottom: 0.5rem;
-      color: #1a1a2e;
-      padding-bottom: 0.3rem;
+    .brief details {
+      margin-top: 1rem;
       border-bottom: 1px solid #eee;
     }
 
-    .brief h2:first-child { margin-top: 0; }
+    .brief details:first-of-type { margin-top: 0; }
+
+    .brief summary {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #1a1a2e;
+      padding: 0.5rem 0;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .brief summary::-webkit-details-marker { display: none; }
+
+    .brief summary::before {
+      content: "\25B6";
+      font-size: 0.6rem;
+      transition: transform 0.2s;
+      color: #888;
+    }
+
+    .brief details[open] summary::before { transform: rotate(90deg); }
+
+    .brief .section-body { padding: 0.25rem 0 0.75rem 1.25rem; }
     .brief p { margin-bottom: 0.5rem; font-size: 0.9rem; }
     .brief ul { margin: 0.5rem 0 0.75rem 1.5rem; }
     .brief li { margin-bottom: 0.3rem; font-size: 0.9rem; }
@@ -216,6 +316,16 @@
     .brief .risk-high { color: #c62828; font-weight: 700; }
     .brief .risk-medium { color: #ef6c00; font-weight: 700; }
     .brief .risk-low { color: #2e7d32; font-weight: 700; }
+
+    /* Print stylesheet for PDF export */
+    @media print {
+      header, .sidebar, .input-group, .export-bar, .progress, .error-box, .empty-state { display: none !important; }
+      .layout { max-width: 100%; padding: 0; }
+      .brief { border: none; padding: 0; box-shadow: none; }
+      .brief details { border-bottom: 1px solid #ccc; }
+      .brief details[open] { break-inside: avoid; }
+      .brief summary::before { content: ""; }
+    }
 
     @media (max-width: 768px) {
       .layout { flex-direction: column; }
@@ -250,6 +360,21 @@
       </div>
 
       <div id="error" class="error-box"></div>
+
+      <div id="empty-state" class="empty-state">
+        <p>Screen any vendor, supplier, or third party</p>
+        <div class="example-chips">
+          <span class="example-chip" data-query="Risk brief for Stripe">Risk brief for Stripe</span>
+          <span class="example-chip" data-query="Risk brief for Palantir">Risk brief for Palantir</span>
+          <span class="example-chip" data-query="Risk brief for OpenAI">Risk brief for OpenAI</span>
+        </div>
+      </div>
+
+      <div id="export-bar" class="export-bar" style="display:none">
+        <button id="copy-btn" type="button">Copy to clipboard</button>
+        <button id="pdf-btn" type="button">Download as PDF</button>
+      </div>
+
       <div id="brief" class="brief"></div>
     </div>
   </div>
@@ -264,11 +389,36 @@
     const brief = document.getElementById("brief");
     const historyList = document.getElementById("history");
     const historyEmpty = document.getElementById("history-empty");
+    const emptyState = document.getElementById("empty-state");
+    const exportBar = document.getElementById("export-bar");
+    const copyBtn = document.getElementById("copy-btn");
+    const pdfBtn = document.getElementById("pdf-btn");
 
     let history = JSON.parse(localStorage.getItem("tprm_history") || "[]");
     let briefCache = JSON.parse(localStorage.getItem("tprm_briefs") || "{}");
+    let currentBriefMd = "";
 
     renderHistory();
+    updateEmptyState();
+
+    // Example chips
+    document.querySelectorAll(".example-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const q = chip.dataset.query;
+        input.value = q;
+        runQuery(q);
+      });
+    });
+
+    // Export buttons
+    copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(currentBriefMd).then(() => {
+        copyBtn.textContent = "Copied!";
+        setTimeout(() => copyBtn.textContent = "Copy to clipboard", 2000);
+      });
+    });
+
+    pdfBtn.addEventListener("click", () => window.print());
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -277,10 +427,18 @@
       runQuery(query);
     });
 
+    function updateEmptyState() {
+      const briefVisible = brief.classList.contains("visible");
+      const progressVisible = progress.classList.contains("visible");
+      emptyState.style.display = (briefVisible || progressVisible) ? "none" : "flex";
+    }
+
     async function runQuery(query) {
       btn.disabled = true;
       brief.classList.remove("visible");
       errorBox.classList.remove("visible");
+      exportBar.style.display = "none";
+      emptyState.style.display = "none";
       progress.classList.add("visible");
       progressSteps.innerHTML = "";
 
@@ -317,6 +475,7 @@
       } finally {
         btn.disabled = false;
         progress.classList.remove("visible");
+        updateEmptyState();
       }
     }
 
@@ -327,7 +486,6 @@
       }
 
       if (data.type === "tool") {
-        // Mark previous active step as done
         const active = progressSteps.querySelector(".active");
         if (active) {
           active.classList.remove("active");
@@ -357,20 +515,43 @@
 
       if (data.type === "brief") {
         progress.classList.remove("visible");
+        currentBriefMd = data.brief;
         brief.innerHTML = markdownToHtml(data.brief);
         brief.classList.add("visible");
+        exportBar.style.display = "flex";
         addToHistory(query, data.brief);
+        updateEmptyState();
       }
 
       if (data.type === "error") {
         progress.classList.remove("visible");
         errorBox.textContent = data.message;
         errorBox.classList.add("visible");
+        updateEmptyState();
       }
     }
 
+    function parseRiskLevel(briefText) {
+      if (!briefText) return null;
+      if (/\*\*HIGH\*\*/.test(briefText)) return "high";
+      if (/\*\*MEDIUM\*\*/.test(briefText)) return "medium";
+      if (/\*\*LOW\*\*/.test(briefText)) return "low";
+      return null;
+    }
+
+    function timeAgo(ts) {
+      const seconds = Math.floor((Date.now() - ts) / 1000);
+      if (seconds < 60) return "just now";
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}d ago`;
+      return new Date(ts).toLocaleDateString();
+    }
+
     function addToHistory(query, briefText) {
-      // Remove duplicate
       history = history.filter(h => h.query !== query);
       history.unshift({ query, timestamp: Date.now() });
       if (history.length > 20) history = history.slice(0, 20);
@@ -386,18 +567,32 @@
 
       for (const item of history) {
         const li = document.createElement("li");
-        li.textContent = item.query;
+        const risk = parseRiskLevel(briefCache[item.query]);
+
+        let badgeHtml = "";
+        if (risk) {
+          badgeHtml = `<span class="risk-badge ${risk}">${risk}</span>`;
+        }
+
+        li.innerHTML = `
+          <div class="history-content">
+            <div class="history-query">${escapeHtml(item.query)}</div>
+            <div class="history-time">${timeAgo(item.timestamp)}</div>
+          </div>
+          ${badgeHtml}
+        `;
         li.title = item.query;
         li.addEventListener("click", () => {
-          // If we have a cached brief, show it; otherwise re-run
           if (briefCache[item.query]) {
             input.value = item.query;
+            currentBriefMd = briefCache[item.query];
             brief.innerHTML = markdownToHtml(briefCache[item.query]);
             brief.classList.add("visible");
+            exportBar.style.display = "flex";
             errorBox.classList.remove("visible");
             progress.classList.remove("visible");
+            updateEmptyState();
 
-            // Mark active
             historyList.querySelectorAll("li").forEach(l => l.classList.remove("active"));
             li.classList.add("active");
           } else {
@@ -408,6 +603,12 @@
       }
     }
 
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
     const svgCheck = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
       <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round"/>
@@ -415,9 +616,45 @@
 
     function markdownToHtml(md) {
       if (!md) return "";
-      let html = md
-        .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-        .replace(/^# (.+)$/gm, "<h2>$1</h2>")
+
+      // Split by ## headings into sections
+      const sections = md.split(/^## /gm);
+      let html = "";
+
+      for (let i = 0; i < sections.length; i++) {
+        let section = sections[i].trim();
+        if (!section) continue;
+
+        if (i === 0 && !md.trimStart().startsWith("## ")) {
+          // Content before first heading (rare)
+          html += renderInline(section);
+          continue;
+        }
+
+        const newlineIdx = section.indexOf("\n");
+        const title = newlineIdx > -1 ? section.slice(0, newlineIdx).trim() : section;
+        const body = newlineIdx > -1 ? section.slice(newlineIdx + 1).trim() : "";
+
+        html += `<details open>
+          <summary>${renderInline(title)}</summary>
+          <div class="section-body">${renderBody(body)}</div>
+        </details>`;
+      }
+
+      return html;
+    }
+
+    function renderInline(text) {
+      return text
+        .replace(/\*\*(HIGH)\*\*/g, '<strong class="risk-high">HIGH</strong>')
+        .replace(/\*\*(MEDIUM)\*\*/g, '<strong class="risk-medium">MEDIUM</strong>')
+        .replace(/\*\*(LOW)\*\*/g, '<strong class="risk-low">LOW</strong>')
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    }
+
+    function renderBody(text) {
+      if (!text) return "<p>Nothing additional to report.</p>";
+      let html = text
         .replace(/\*\*(HIGH)\*\*/g, '<strong class="risk-high">HIGH</strong>')
         .replace(/\*\*(MEDIUM)\*\*/g, '<strong class="risk-medium">MEDIUM</strong>')
         .replace(/\*\*(LOW)\*\*/g, '<strong class="risk-low">LOW</strong>')

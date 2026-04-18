@@ -61,6 +61,54 @@ def _required_tools(entity: str) -> dict:
     }
 
 
+def _compute_risk(pre_results: dict) -> str:
+    """
+    Deterministic risk rating based on tool results.
+    Returns HIGH, MEDIUM, or LOW with a reason.
+    """
+    reasons_high = []
+    reasons_medium = []
+
+    # Check sanctions
+    sanctions = pre_results.get("sanctions_lookup", {})
+    for hit in sanctions.get("hits", []):
+        if hit.get("name_similarity", 0) >= 0.6:
+            reasons_high.append(
+                f"Confirmed sanctions listing: {hit.get('source', '').upper()} "
+                f"(ID: {hit.get('id')}, similarity: {hit.get('name_similarity')})"
+            )
+
+    # Check SEC enforcement
+    enforcement = pre_results.get("sec_enforcement_search", {})
+    if enforcement.get("total_hits", 0) > 0:
+        reasons_high.append(
+            f"SEC enforcement hits: {enforcement['total_hits']} filings "
+            f"mentioning enforcement actions or penalties"
+        )
+
+    # Check adverse media
+    adverse = pre_results.get("adverse_media", {})
+    if adverse.get("article_count", 0) > 3:
+        reasons_medium.append(
+            f"Adverse media: {adverse['article_count']} articles found"
+        )
+
+    # Check adverse media fallback
+    fallback = pre_results.get("adverse_media_fallback", {})
+    if fallback.get("result_count", 0) > 2:
+        reasons_medium.append(
+            f"Adverse web results: {fallback['result_count']} results for "
+            f"scandal/lawsuit/penalty queries"
+        )
+
+    if reasons_high:
+        return f"HIGH — {'; '.join(reasons_high)}"
+    elif reasons_medium:
+        return f"MEDIUM — {'; '.join(reasons_medium)}"
+    else:
+        return "LOW — No sanctions, enforcement actions, or significant adverse media found"
+
+
 def _pre_screen(entity: str) -> dict:
     """
     Run all required tools upfront before the model starts.
@@ -110,6 +158,10 @@ def run_agent(user_query: str, max_steps: int = 8) -> str | None:
         )
     pre_screen_context = "\n\n".join(context_parts)
 
+    # Compute risk rating deterministically
+    risk_rating = _compute_risk(pre_results)
+    print(f"[agent] computed risk: {risk_rating}")
+
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {
@@ -119,7 +171,9 @@ def run_agent(user_query: str, max_steps: int = 8) -> str | None:
                 f"The following tool results have already been gathered for "
                 f"'{entity}'. Use ONLY this data to write the brief. Do NOT "
                 f"make up any facts. If a tool returned an error, note it as "
-                f"an information gap.\n\n{pre_screen_context}"
+                f"an information gap.\n\n{pre_screen_context}\n\n"
+                f"MANDATORY RISK RATING (computed from tool data — do NOT "
+                f"override this): **{risk_rating}**"
             ),
         },
     ]
@@ -236,6 +290,9 @@ def run_agent_streaming(user_query: str, max_steps: int = 8):
         except Exception as e:
             pre_results["adverse_media_fallback"] = {"error": str(e)}
 
+    # Compute risk rating deterministically
+    risk_rating = _compute_risk(pre_results)
+
     # Generate brief
     yield {"type": "generating"}
 
@@ -257,7 +314,9 @@ def run_agent_streaming(user_query: str, max_steps: int = 8):
                     f"The following tool results have already been gathered for "
                     f"'{entity}'. Use ONLY this data to write the brief. Do NOT "
                     f"make up any facts. If a tool returned an error, note it as "
-                    f"an information gap.\n\n{pre_screen_context}"
+                    f"an information gap.\n\n{pre_screen_context}\n\n"
+                    f"MANDATORY RISK RATING (computed from tool data — do NOT "
+                    f"override this): **{risk_rating}**"
                 ),
             },
         ]
