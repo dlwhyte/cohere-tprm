@@ -57,6 +57,7 @@ def _required_tools(entity: str) -> dict:
         "sec_enforcement_search": {"company": entity},
         "trust_center_search": {"company": entity},
         "adverse_media": {"query": entity},
+        "cve_lookup": {"product": entity},
         "web_search": {"query": entity},
     }
 
@@ -85,6 +86,25 @@ def _compute_risk(pre_results: dict) -> str:
             f"SEC enforcement hits: {enforcement['total_hits']} filings "
             f"mentioning enforcement actions or penalties"
         )
+
+    # Check CVE/KEV
+    cves = pre_results.get("cve_lookup", {})
+    kev_count = cves.get("kev_matches", 0)
+    if kev_count > 0:
+        reasons_high.append(
+            f"CISA KEV: {kev_count} actively exploited vulnerability(ies) found"
+        )
+    elif cves.get("total_cves", 0) > 0:
+        # Check for CRITICAL/HIGH CVEs
+        critical_high = [
+            c for c in cves.get("cves", [])
+            if c.get("severity") in ("CRITICAL", "HIGH")
+        ]
+        if critical_high:
+            reasons_medium.append(
+                f"CVEs: {len(critical_high)} CRITICAL/HIGH severity "
+                f"vulnerability(ies) found out of {cves['total_cves']} total"
+            )
 
     # Check adverse media
     adverse = pre_results.get("adverse_media", {})
@@ -251,6 +271,7 @@ TOOL_LABELS = {
     "sec_enforcement_search": "Checking SEC enforcement actions",
     "trust_center_search": "Searching trust centers",
     "adverse_media": "Scanning adverse media",
+    "cve_lookup": "Checking vulnerabilities (CVE/KEV)",
     "web_search": "Searching the web",
 }
 

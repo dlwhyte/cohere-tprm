@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 from tools import (
     sanctions_lookup, web_search, entity_lookup, trust_center_search,
-    adverse_media, sec_filing_search, sec_enforcement_search,
+    adverse_media, sec_filing_search, sec_enforcement_search, cve_lookup,
     TOOL_REGISTRY, TOOL_SCHEMAS,
 )
 
@@ -454,3 +454,80 @@ def test_sec_enforcement_search_api_error(mock_get):
 
     assert "error" in result
     assert "EDGAR down" in result["error"]
+
+
+# ---------- cve_lookup tests ----------
+
+MOCK_NVD_RESPONSE = {
+    "totalResults": 2,
+    "vulnerabilities": [
+        {
+            "cve": {
+                "id": "CVE-2024-1234",
+                "published": "2024-03-15T00:00:00.000",
+                "descriptions": [{"lang": "en", "value": "Critical RCE in Acme product"}],
+                "metrics": {
+                    "cvssMetricV31": [{
+                        "cvssData": {"baseScore": 9.8, "baseSeverity": "CRITICAL"},
+                    }],
+                },
+            },
+        },
+        {
+            "cve": {
+                "id": "CVE-2024-5678",
+                "published": "2024-02-10T00:00:00.000",
+                "descriptions": [{"lang": "en", "value": "XSS in Acme widget"}],
+                "metrics": {
+                    "cvssMetricV31": [{
+                        "cvssData": {"baseScore": 4.3, "baseSeverity": "MEDIUM"},
+                    }],
+                },
+            },
+        },
+    ],
+}
+
+
+@patch("tools._load_kev", return_value={"CVE-2024-1234"})
+@patch("tools.httpx.get")
+def test_cve_lookup_success(mock_get, mock_kev):
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = MOCK_NVD_RESPONSE
+    mock_resp.raise_for_status.return_value = None
+    mock_get.return_value = mock_resp
+
+    result = cve_lookup("Acme")
+
+    assert result["query"] == "Acme"
+    assert result["total_cves"] == 2
+    assert result["kev_matches"] == 1
+    assert result["cves"][0]["id"] == "CVE-2024-1234"
+    assert result["cves"][0]["severity"] == "CRITICAL"
+    assert result["cves"][0]["in_kev"] is True
+    assert result["cves"][1]["in_kev"] is False
+
+
+@patch("tools._load_kev", return_value=set())
+@patch("tools.httpx.get")
+def test_cve_lookup_empty(mock_get, mock_kev):
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"totalResults": 0, "vulnerabilities": []}
+    mock_resp.raise_for_status.return_value = None
+    mock_get.return_value = mock_resp
+
+    result = cve_lookup("Nonexistent Product")
+
+    assert result["total_cves"] == 0
+    assert result["kev_matches"] == 0
+    assert result["cves"] == []
+
+
+@patch("tools.httpx.get")
+def test_cve_lookup_api_error(mock_get):
+    mock_get.side_effect = Exception("NVD unavailable")
+
+    result = cve_lookup("Test")
+
+    assert "error" in result
+    assert "NVD unavailable" in result["error"]

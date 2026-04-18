@@ -340,6 +340,95 @@ def sec_enforcement_search(company: str) -> dict:
     return result
 
 
+# ---------- KEV cache ----------
+
+_kev_cache: dict | None = None
+
+
+def _load_kev() -> set[str]:
+    """Download and cache CISA KEV CVE IDs. Returns a set of CVE IDs."""
+    global _kev_cache
+    if _kev_cache is not None:
+        return _kev_cache
+
+    try:
+        r = httpx.get(
+            "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+        _kev_cache = {v.get("cveID") for v in data.get("vulnerabilities", [])}
+    except Exception:
+        _kev_cache = set()
+
+    return _kev_cache
+
+
+def cve_lookup(product: str) -> dict:
+    """
+    Search NVD for CVEs related to a product/vendor and cross-reference
+    with CISA Known Exploited Vulnerabilities (KEV) catalog.
+    Free APIs, no key required.
+    """
+    # 1. Search NVD
+    try:
+        r = httpx.get(
+            "https://services.nvd.nist.gov/rest/json/cves/2.0",
+            params={"keywordSearch": product, "resultsPerPage": 10},
+            timeout=20,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        err = {"error": f"cve_lookup failed: {e}"}
+        print(f"[DEBUG cve_lookup] {json.dumps(err, indent=2)}")
+        return err
+
+    # 2. Load KEV for cross-referencing
+    kev_ids = _load_kev()
+
+    total = data.get("totalResults", 0)
+    cves = []
+    for v in data.get("vulnerabilities", [])[:10]:
+        cve = v.get("cve", {})
+        cve_id = cve.get("id", "")
+
+        # Extract CVSS score
+        metrics = cve.get("metrics", {})
+        cvss31 = metrics.get("cvssMetricV31", [])
+        cvss30 = metrics.get("cvssMetricV30", [])
+        cvss_data = (cvss31 or cvss30 or [{}])[0].get("cvssData", {})
+        score = cvss_data.get("baseScore")
+        severity = cvss_data.get("baseSeverity")
+
+        # Extract description
+        descs = cve.get("descriptions", [])
+        desc = next((d["value"] for d in descs if d["lang"] == "en"), "")
+
+        cves.append({
+            "id": cve_id,
+            "published": cve.get("published", "")[:10],
+            "score": score,
+            "severity": severity,
+            "in_kev": cve_id in kev_ids,
+            "description": desc[:300],
+        })
+
+    # Sort by severity: CRITICAL > HIGH > MEDIUM > LOW
+    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+    cves.sort(key=lambda c: severity_order.get(c.get("severity", ""), 99))
+
+    result = {
+        "query": product,
+        "total_cves": total,
+        "kev_matches": sum(1 for c in cves if c.get("in_kev")),
+        "cves": cves,
+    }
+    print(f"[DEBUG cve_lookup] {json.dumps(result, indent=2)}")
+    return result
+
+
 # Registry: tool name -> callable. This is the allowlist.
 TOOL_REGISTRY = {
     "sanctions_lookup": sanctions_lookup,
@@ -349,6 +438,7 @@ TOOL_REGISTRY = {
     "adverse_media": adverse_media,
     "sec_filing_search": sec_filing_search,
     "sec_enforcement_search": sec_enforcement_search,
+    "cve_lookup": cve_lookup,
 }
 
 # Schemas exposed to the model. JSON Schema inside Cohere's tool spec.
@@ -511,6 +601,28 @@ TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["company"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cve_lookup",
+            "description": (
+                "Search NVD for known vulnerabilities (CVEs) related to a "
+                "product or vendor. Cross-references with CISA Known Exploited "
+                "Vulnerabilities (KEV) catalog. Returns CVE IDs, CVSS scores, "
+                "severity, and whether each CVE is actively exploited."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product": {
+                        "type": "string",
+                        "description": "Product or vendor name to search for.",
+                    },
+                },
+                "required": ["product"],
             },
         },
     },
