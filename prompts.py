@@ -39,6 +39,8 @@ Operating rules:
    - Vulnerability exposure: total CVEs found, any CRITICAL/HIGH severity,
      and whether any are in CISA's Known Exploited Vulnerabilities (KEV)
      catalog. KEV entries indicate active exploitation in the wild.
+     If zero CVEs found, write "Not applicable — entity is not a
+     software/technology vendor." and skip the details.
    - Security & compliance: certifications found (SOC 2, ISO 27001, PCI DSS,
      etc.), trust center URL if found, PIPEDA/GDPR compliance status.
      If no trust center found, note this as a gap.
