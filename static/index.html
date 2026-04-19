@@ -476,6 +476,7 @@
       emptyState.style.display = "none";
       progress.classList.add("visible");
       progressSteps.innerHTML = "";
+      currentBriefMd = "";
 
       input.value = query;
 
@@ -558,8 +559,19 @@
         progressSteps.appendChild(li);
       }
 
-      if (data.type === "brief") {
+      if (data.type === "delta") {
+        // Stream text into the brief as it arrives
         progress.classList.remove("visible");
+        currentBriefMd += data.text;
+        brief.innerHTML = markdownToHtml(currentBriefMd);
+        brief.classList.add("visible");
+        updateEmptyState();
+        // Auto-scroll to bottom of brief
+        brief.scrollTop = brief.scrollHeight;
+      }
+
+      if (data.type === "brief") {
+        // Final brief — re-render cleanly and save to history
         currentBriefMd = data.brief;
         brief.innerHTML = markdownToHtml(data.brief);
         brief.classList.add("visible");

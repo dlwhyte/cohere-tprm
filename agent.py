@@ -385,59 +385,22 @@ def run_agent_streaming(user_query: str, max_steps: int = 8, sbom_json: str | No
             },
         ]
 
-        for step in range(max_steps):
-            resp = co.chat(model=MODEL, messages=messages, tools=TOOL_SCHEMAS)
-            msg = resp.message
+        # Stream the response token by token
+        full_text = ""
+        for event in co.chat_stream(
+            model=MODEL, messages=messages, tools=TOOL_SCHEMAS
+        ):
+            if event.type == "content-delta":
+                delta = event.delta.message.content.text
+                full_text += delta
+                yield {"type": "delta", "text": delta}
+            elif event.type == "message-end":
+                break
 
-            if not msg.tool_calls:
-                final = "".join(
-                    c.text for c in (msg.content or [])
-                    if getattr(c, "type", "") == "text"
-                )
-                yield {"type": "brief", "brief": final}
-                return
-
-            messages.append({
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in msg.tool_calls
-                ],
-                "tool_plan": msg.tool_plan,
-            })
-
-            for tc in msg.tool_calls:
-                name = tc.function.name
-                try:
-                    args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    args = {}
-
-                if name not in TOOL_REGISTRY:
-                    result = {"error": f"tool '{name}' not in allowlist"}
-                else:
-                    try:
-                        result = TOOL_REGISTRY[name](**args)
-                    except TypeError as e:
-                        result = {"error": f"bad arguments to {name}: {e}"}
-                    except Exception as e:
-                        result = {"error": f"{name} raised: {e}"}
-
-                wrapped = f"<tool_result>{json.dumps(result)}</tool_result>"
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": wrapped,
-                })
-
-        yield {"type": "error", "message": f"Halted after {max_steps} steps"}
+        if full_text:
+            yield {"type": "brief", "brief": full_text}
+        else:
+            yield {"type": "error", "message": "Model produced no output"}
     except Exception as e:
         yield {"type": "error", "message": str(e)}
 
