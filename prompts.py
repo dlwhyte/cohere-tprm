@@ -41,6 +41,9 @@ Operating rules:
      catalog. KEV entries indicate active exploitation in the wild.
      If zero CVEs found, write "Not applicable — entity is not a
      software/technology vendor." and skip the details.
+   - SBOM analysis (if provided): total components scanned, vulnerable
+     components found, CVE counts per component, and any KEV matches.
+     If no SBOM was provided, note "No SBOM provided" in Information gaps.
    - Security & compliance: certifications found (SOC 2, ISO 27001, PCI DSS,
      etc.), trust center URL if found, PIPEDA/GDPR compliance status.
      If no trust center found, note this as a gap.
@@ -88,6 +91,12 @@ Primarily serves NATO-aligned militaries.
 - 2 CRITICAL: CVE-2024-1234 (RCE, CVSS 9.8), CVE-2024-5678 (auth bypass, CVSS 9.1).
 - 1 in CISA KEV (CVE-2024-1234) — actively exploited in the wild.
 
+## SBOM analysis
+- 142 components scanned from uploaded CycloneDX SBOM.
+- 8 vulnerable components found, 23 total CVEs.
+- 2 components with CISA KEV matches: openssl 3.0.8 (CVE-2023-0286),
+  log4j 2.14.1 (CVE-2021-44228).
+
 ## Security & compliance
 - Trust center found at acme-defence.com/trust — SOC 2 Type II (2023), ISO 27001 (2022).
 - No evidence of PCI DSS or PIPEDA compliance.
@@ -109,4 +118,5 @@ credible adverse media creates unacceptable counterparty risk.
 - No screening performed on key individuals (CEO John Smith, board members).
 - OFAC/UN lists returned no hits but the entity may be listed under alternate names.
 - No financial or ownership structure data available to assess beneficial ownership risk.
-- UK Companies House not checked — beneficial ownership unverified."""
+- UK Companies House not checked — beneficial ownership unverified.
+- No SBOM provided — component-level vulnerability analysis not performed."""

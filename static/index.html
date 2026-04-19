@@ -140,6 +140,24 @@
     button:hover { background: #16213e; }
     button:disabled { background: #999; cursor: not-allowed; }
 
+    .file-upload {
+      display: flex;
+      align-items: center;
+      padding: 0.7rem 0.9rem;
+      font-size: 0.8rem;
+      background: #fff;
+      border: 1px dashed #aaa;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #666;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .file-upload:hover { border-color: #1a1a2e; color: #1a1a2e; }
+    .file-upload.has-file { border-style: solid; border-color: #2e7d32; color: #2e7d32; }
+    .file-upload input[type="file"] { display: none; }
+
     /* Empty state */
     .empty-state {
       display: flex;
@@ -351,6 +369,10 @@
     <div class="main">
       <form id="form" class="input-group">
         <input type="text" id="query" placeholder="e.g. Risk brief for Shopify" autofocus>
+        <label class="file-upload" title="Attach SBOM (CycloneDX/SPDX JSON)">
+          <input type="file" id="sbom" accept=".json">
+          <span id="file-label">SBOM</span>
+        </label>
         <button type="submit" id="btn">Run</button>
       </form>
 
@@ -393,10 +415,23 @@
     const exportBar = document.getElementById("export-bar");
     const copyBtn = document.getElementById("copy-btn");
     const pdfBtn = document.getElementById("pdf-btn");
+    const sbomInput = document.getElementById("sbom");
+    const fileLabel = document.getElementById("file-label");
 
     let history = JSON.parse(localStorage.getItem("tprm_history") || "[]");
     let briefCache = JSON.parse(localStorage.getItem("tprm_briefs") || "{}");
     let currentBriefMd = "";
+
+    // SBOM file input label
+    sbomInput.addEventListener("change", () => {
+      if (sbomInput.files.length > 0) {
+        fileLabel.textContent = sbomInput.files[0].name;
+        sbomInput.closest(".file-upload").classList.add("has-file");
+      } else {
+        fileLabel.textContent = "SBOM";
+        sbomInput.closest(".file-upload").classList.remove("has-file");
+      }
+    });
 
     renderHistory();
     updateEmptyState();
@@ -445,10 +480,15 @@
       input.value = query;
 
       try {
+        const formData = new FormData();
+        formData.append("query", query);
+        if (sbomInput.files.length > 0) {
+          formData.append("sbom", sbomInput.files[0]);
+        }
+
         const resp = await fetch("/api/brief", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query }),
+          body: formData,
         });
 
         const reader = resp.body.getReader();

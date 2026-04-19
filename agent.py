@@ -106,6 +106,21 @@ def _compute_risk(pre_results: dict) -> str:
                 f"vulnerability(ies) found out of {cves['total_cves']} total"
             )
 
+    # Check SBOM analysis
+    sbom = pre_results.get("sbom_analysis", {})
+    sbom_kev = sbom.get("kev_matches", 0)
+    if sbom_kev > 0:
+        reasons_high.append(
+            f"SBOM: {sbom_kev} component(s) with actively exploited "
+            f"vulnerabilities (CISA KEV)"
+        )
+    elif sbom.get("total_cves", 0) > 0:
+        vuln_comps = sbom.get("vulnerable_components", 0)
+        reasons_medium.append(
+            f"SBOM: {vuln_comps} vulnerable component(s) with "
+            f"{sbom['total_cves']} total CVEs"
+        )
+
     # Check adverse media
     adverse = pre_results.get("adverse_media", {})
     if adverse.get("article_count", 0) > 3:
@@ -276,7 +291,7 @@ TOOL_LABELS = {
 }
 
 
-def run_agent_streaming(user_query: str, max_steps: int = 8):
+def run_agent_streaming(user_query: str, max_steps: int = 8, sbom_json: str | None = None):
     """
     Generator that yields status events during pre-screening and the final brief.
     Events: {"type": "tool", "tool": "...", "label": "..."} during pre-screen,
@@ -284,6 +299,8 @@ def run_agent_streaming(user_query: str, max_steps: int = 8):
             {"type": "brief", "brief": "..."} on completion,
             {"type": "error", "message": "..."} on failure.
     """
+    from tools import sbom_analysis
+
     entity = _extract_entity(user_query)
     yield {"type": "entity", "entity": entity}
 
@@ -310,6 +327,14 @@ def run_agent_streaming(user_query: str, max_steps: int = 8):
             )
         except Exception as e:
             pre_results["adverse_media_fallback"] = {"error": str(e)}
+
+    # SBOM analysis if provided
+    if sbom_json:
+        yield {"type": "tool", "tool": "sbom_analysis", "label": "Analyzing SBOM components"}
+        try:
+            pre_results["sbom_analysis"] = sbom_analysis(sbom_json)
+        except Exception as e:
+            pre_results["sbom_analysis"] = {"error": str(e)}
 
     # Compute risk rating deterministically
     risk_rating = _compute_risk(pre_results)

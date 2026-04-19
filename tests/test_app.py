@@ -34,7 +34,7 @@ def test_brief_success(mock_stream):
         {"type": "brief", "brief": "## Entity summary\nTest entity."},
     ])
 
-    resp = client.post("/api/brief", json={"query": "Test Corp"})
+    resp = client.post("/api/brief", data={"query": "Test Corp"})
 
     assert resp.status_code == 200
     events = _parse_sse(resp)
@@ -50,7 +50,7 @@ def test_brief_error(mock_stream):
         {"type": "error", "message": "API key invalid"},
     ])
 
-    resp = client.post("/api/brief", json={"query": "Test Corp"})
+    resp = client.post("/api/brief", data={"query": "Test Corp"})
 
     assert resp.status_code == 200
     events = _parse_sse(resp)
@@ -61,7 +61,7 @@ def test_brief_error(mock_stream):
 def test_brief_exception(mock_stream):
     mock_stream.side_effect = Exception("connection failed")
 
-    resp = client.post("/api/brief", json={"query": "Test Corp"})
+    resp = client.post("/api/brief", data={"query": "Test Corp"})
 
     assert resp.status_code == 200
     events = _parse_sse(resp)
@@ -69,5 +69,28 @@ def test_brief_exception(mock_stream):
 
 
 def test_brief_missing_query():
-    resp = client.post("/api/brief", json={})
+    resp = client.post("/api/brief", data={})
     assert resp.status_code == 422
+
+
+@patch("app.run_agent_streaming")
+def test_brief_with_sbom(mock_stream):
+    mock_stream.return_value = iter([
+        {"type": "entity", "entity": "Test Corp"},
+        {"type": "tool", "tool": "sbom_analysis", "label": "Analyzing SBOM"},
+        {"type": "brief", "brief": "## SBOM analysis\n8 vulnerable components."},
+    ])
+
+    sbom_content = b'{"bomFormat": "CycloneDX", "components": []}'
+    resp = client.post(
+        "/api/brief",
+        data={"query": "Test Corp"},
+        files={"sbom": ("test.json", sbom_content, "application/json")},
+    )
+
+    assert resp.status_code == 200
+    events = _parse_sse(resp)
+    assert events[-1]["type"] == "brief"
+    mock_stream.assert_called_once()
+    call_kwargs = mock_stream.call_args
+    assert call_kwargs[1]["sbom_json"] is not None

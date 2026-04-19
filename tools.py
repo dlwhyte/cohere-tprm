@@ -429,6 +429,121 @@ def cve_lookup(product: str) -> dict:
     return result
 
 
+def _parse_sbom(sbom_data: dict) -> list[dict]:
+    """
+    Parse components from a CycloneDX or SPDX SBOM.
+    Returns a list of {"name": ..., "version": ..., "purl": ...}.
+    """
+    components = []
+
+    # CycloneDX format
+    if sbom_data.get("bomFormat") == "CycloneDX" or "components" in sbom_data:
+        for comp in sbom_data.get("components", []):
+            components.append({
+                "name": comp.get("name", ""),
+                "version": comp.get("version", ""),
+                "purl": comp.get("purl", ""),
+                "type": comp.get("type", ""),
+            })
+
+    # SPDX format
+    elif "spdxVersion" in sbom_data or "packages" in sbom_data:
+        for pkg in sbom_data.get("packages", []):
+            name = pkg.get("name", "")
+            version = pkg.get("versionInfo", "")
+            purls = pkg.get("externalRefs", [])
+            purl = ""
+            for ref in purls:
+                if ref.get("referenceType") == "purl":
+                    purl = ref.get("referenceLocator", "")
+                    break
+            if name and name != "NOASSERTION":
+                components.append({
+                    "name": name,
+                    "version": version,
+                    "purl": purl,
+                    "type": "library",
+                })
+
+    return components
+
+
+def sbom_analysis(sbom_json: str) -> dict:
+    """
+    Parse an SBOM (CycloneDX or SPDX JSON) and run component-level CVE
+    lookups against NVD. Cross-references with CISA KEV.
+    """
+    try:
+        sbom_data = json.loads(sbom_json) if isinstance(sbom_json, str) else sbom_json
+    except json.JSONDecodeError as e:
+        return {"error": f"Invalid SBOM JSON: {e}"}
+
+    components = _parse_sbom(sbom_data)
+    if not components:
+        return {"error": "No components found in SBOM. Ensure it is CycloneDX or SPDX format."}
+
+    kev_ids = _load_kev()
+
+    vulnerable = []
+    total_cves = 0
+    total_kev = 0
+
+    for comp in components:
+        search_term = comp["name"]
+        if comp.get("version"):
+            search_term = f"{comp['name']} {comp['version']}"
+
+        try:
+            r = httpx.get(
+                "https://services.nvd.nist.gov/rest/json/cves/2.0",
+                params={"keywordSearch": search_term, "resultsPerPage": 5},
+                timeout=20,
+            )
+            r.raise_for_status()
+            data = r.json()
+        except Exception:
+            continue
+
+        comp_cves = []
+        for v in data.get("vulnerabilities", [])[:5]:
+            cve = v.get("cve", {})
+            cve_id = cve.get("id", "")
+            metrics = cve.get("metrics", {})
+            cvss31 = metrics.get("cvssMetricV31", [])
+            cvss30 = metrics.get("cvssMetricV30", [])
+            cvss_data = (cvss31 or cvss30 or [{}])[0].get("cvssData", {})
+
+            in_kev = cve_id in kev_ids
+            if in_kev:
+                total_kev += 1
+
+            comp_cves.append({
+                "id": cve_id,
+                "score": cvss_data.get("baseScore"),
+                "severity": cvss_data.get("baseSeverity"),
+                "in_kev": in_kev,
+            })
+
+        if comp_cves:
+            total_cves += len(comp_cves)
+            vulnerable.append({
+                "component": comp["name"],
+                "version": comp.get("version", ""),
+                "cve_count": len(comp_cves),
+                "cves": comp_cves,
+            })
+
+    result = {
+        "total_components": len(components),
+        "vulnerable_components": len(vulnerable),
+        "total_cves": total_cves,
+        "kev_matches": total_kev,
+        "details": vulnerable[:20],
+    }
+    print(f"[DEBUG sbom_analysis] {json.dumps(result, indent=2)}")
+    return result
+
+
 # Registry: tool name -> callable. This is the allowlist.
 TOOL_REGISTRY = {
     "sanctions_lookup": sanctions_lookup,

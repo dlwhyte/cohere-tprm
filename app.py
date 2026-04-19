@@ -6,11 +6,10 @@ import json
 import warnings
 warnings.filterwarnings("ignore", message="urllib3.*OpenSSL")
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Form, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 from typing import Optional
-from pydantic import BaseModel
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -20,21 +19,19 @@ from agent import run_agent_streaming
 app = FastAPI(title="TPRM Agent")
 
 
-class BriefRequest(BaseModel):
-    query: str
-
-
-class BriefResponse(BaseModel):
-    query: str
-    brief: Optional[str] = None
-    error: Optional[str] = None
-
-
 @app.post("/api/brief")
-def create_brief(req: BriefRequest):
+async def create_brief(
+    query: str = Form(...),
+    sbom: Optional[UploadFile] = File(None),
+):
+    sbom_json = None
+    if sbom and sbom.filename:
+        content = await sbom.read()
+        sbom_json = content.decode("utf-8")
+
     def event_stream():
         try:
-            for event in run_agent_streaming(req.query):
+            for event in run_agent_streaming(query, sbom_json=sbom_json):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

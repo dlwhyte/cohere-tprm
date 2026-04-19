@@ -1,10 +1,12 @@
 """Tests for TPRM agent tools."""
 
+import json
 from unittest.mock import patch, MagicMock
 
 from tools import (
     sanctions_lookup, web_search, entity_lookup, trust_center_search,
     adverse_media, sec_filing_search, sec_enforcement_search, cve_lookup,
+    sbom_analysis, _parse_sbom,
     TOOL_REGISTRY, TOOL_SCHEMAS,
 )
 
@@ -531,3 +533,76 @@ def test_cve_lookup_api_error(mock_get):
 
     assert "error" in result
     assert "NVD unavailable" in result["error"]
+
+
+# ---------- sbom_analysis tests ----------
+
+MOCK_CYCLONEDX_SBOM = {
+    "bomFormat": "CycloneDX",
+    "specVersion": "1.5",
+    "components": [
+        {"type": "library", "name": "lodash", "version": "4.17.21", "purl": "pkg:npm/lodash@4.17.21"},
+        {"type": "library", "name": "openssl", "version": "3.0.8", "purl": "pkg:generic/openssl@3.0.8"},
+    ],
+}
+
+MOCK_SPDX_SBOM = {
+    "spdxVersion": "SPDX-2.3",
+    "packages": [
+        {
+            "name": "requests",
+            "versionInfo": "2.28.0",
+            "externalRefs": [{"referenceType": "purl", "referenceLocator": "pkg:pypi/requests@2.28.0"}],
+        },
+        {"name": "NOASSERTION", "versionInfo": ""},
+    ],
+}
+
+
+def test_parse_sbom_cyclonedx():
+    components = _parse_sbom(MOCK_CYCLONEDX_SBOM)
+    assert len(components) == 2
+    assert components[0]["name"] == "lodash"
+    assert components[0]["version"] == "4.17.21"
+
+
+def test_parse_sbom_spdx():
+    components = _parse_sbom(MOCK_SPDX_SBOM)
+    assert len(components) == 1  # NOASSERTION filtered out
+    assert components[0]["name"] == "requests"
+
+
+def test_sbom_analysis_invalid_json():
+    result = sbom_analysis("not valid json {{{")
+    assert "error" in result
+    assert "Invalid SBOM JSON" in result["error"]
+
+
+def test_sbom_analysis_no_components():
+    result = sbom_analysis('{"bomFormat": "CycloneDX", "components": []}')
+    assert "error" in result
+    assert "No components found" in result["error"]
+
+
+@patch("tools._load_kev", return_value={"CVE-2023-0286"})
+@patch("tools.httpx.get")
+def test_sbom_analysis_success(mock_get, mock_kev):
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {
+        "totalResults": 1,
+        "vulnerabilities": [{
+            "cve": {
+                "id": "CVE-2023-0286",
+                "descriptions": [{"lang": "en", "value": "OpenSSL vuln"}],
+                "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 9.8, "baseSeverity": "CRITICAL"}}]},
+            },
+        }],
+    }
+    mock_resp.raise_for_status.return_value = None
+    mock_get.return_value = mock_resp
+
+    result = sbom_analysis(json.dumps(MOCK_CYCLONEDX_SBOM))
+
+    assert result["total_components"] == 2
+    assert result["vulnerable_components"] >= 1
+    assert result["kev_matches"] >= 1
