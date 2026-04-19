@@ -16,6 +16,7 @@ import os
 import re
 import sys
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 warnings.filterwarnings("ignore", message="urllib3.*OpenSSL")
 
@@ -144,22 +145,31 @@ def _compute_risk(pre_results: dict) -> str:
         return "LOW — No sanctions, enforcement actions, or significant adverse media found"
 
 
+def _run_tool(tool_name: str, args: dict) -> tuple[str, dict]:
+    """Run a single tool and return (name, result). For use with ThreadPoolExecutor."""
+    print(f"[pre-screen] -> {tool_name}({args})")
+    try:
+        return tool_name, TOOL_REGISTRY[tool_name](**args)
+    except Exception as e:
+        return tool_name, {"error": f"{tool_name} raised: {e}"}
+
+
 def _pre_screen(entity: str) -> dict:
     """
-    Run all required tools upfront before the model starts.
+    Run all required tools in parallel before the model starts.
     Returns a dict of tool_name -> result.
     """
-    results = {}
-
-    # Always run these tools
     required_tools = _required_tools(entity)
 
-    for tool_name, args in required_tools.items():
-        print(f"[pre-screen] -> {tool_name}({args})")
-        try:
-            results[tool_name] = TOOL_REGISTRY[tool_name](**args)
-        except Exception as e:
-            results[tool_name] = {"error": f"{tool_name} raised: {e}"}
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(required_tools)) as pool:
+        futures = {
+            pool.submit(_run_tool, name, args): name
+            for name, args in required_tools.items()
+        }
+        for future in as_completed(futures):
+            name, result = future.result()
+            results[name] = result
 
     # If adverse_media failed, run a fallback web search with adverse keywords
     adverse = results.get("adverse_media", {})
@@ -304,23 +314,31 @@ def run_agent_streaming(user_query: str, max_steps: int = 8, sbom_json: str | No
     entity = _extract_entity(user_query)
     yield {"type": "entity", "entity": entity}
 
-    # Pre-screen with progress events
+    # Pre-screen: run all tools in parallel, emit progress as each completes
     required_tools = _required_tools(entity)
 
-    pre_results = {}
-    for tool_name, args in required_tools.items():
+    # Emit all tool labels upfront so the UI shows them
+    for tool_name in required_tools:
         label = TOOL_LABELS.get(tool_name, tool_name)
         yield {"type": "tool", "tool": tool_name, "label": label}
-        try:
-            pre_results[tool_name] = TOOL_REGISTRY[tool_name](**args)
-        except Exception as e:
-            pre_results[tool_name] = {"error": f"{tool_name} raised: {e}"}
+
+    # Run in parallel
+    pre_results = {}
+    with ThreadPoolExecutor(max_workers=len(required_tools)) as pool:
+        futures = {
+            pool.submit(_run_tool, name, args): name
+            for name, args in required_tools.items()
+        }
+        for future in as_completed(futures):
+            name, result = future.result()
+            pre_results[name] = result
+            yield {"type": "tool_done", "tool": name}
 
     # Adverse media fallback
     adverse = pre_results.get("adverse_media", {})
     if "error" in adverse or adverse.get("article_count", 0) == 0:
         fallback_query = f"{entity} scandal lawsuit penalty investigation"
-        yield {"type": "tool", "tool": "web_search", "label": "Searching adverse media (fallback)"}
+        yield {"type": "tool", "tool": "web_search_fallback", "label": "Searching adverse media (fallback)"}
         try:
             pre_results["adverse_media_fallback"] = TOOL_REGISTRY["web_search"](
                 query=fallback_query

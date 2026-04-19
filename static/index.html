@@ -526,26 +526,31 @@
       }
 
       if (data.type === "tool") {
-        const active = progressSteps.querySelector(".active");
-        if (active) {
-          active.classList.remove("active");
-          active.classList.add("done");
-          active.querySelector(".icon").innerHTML = svgCheck;
-        }
-
+        // Add tool step with spinner (all show at once for parallel execution)
         const li = document.createElement("li");
         li.className = "progress-step active";
+        li.dataset.tool = data.tool;
         li.innerHTML = `<span class="icon"><div class="spinner"></div></span>${data.label}`;
         progressSteps.appendChild(li);
       }
 
-      if (data.type === "generating") {
-        const active = progressSteps.querySelector(".active");
-        if (active) {
-          active.classList.remove("active");
-          active.classList.add("done");
-          active.querySelector(".icon").innerHTML = svgCheck;
+      if (data.type === "tool_done") {
+        // Mark specific tool as done
+        const step = progressSteps.querySelector(`[data-tool="${data.tool}"]`);
+        if (step) {
+          step.classList.remove("active");
+          step.classList.add("done");
+          step.querySelector(".icon").innerHTML = svgCheck;
         }
+      }
+
+      if (data.type === "generating") {
+        // Mark any remaining active steps as done
+        progressSteps.querySelectorAll(".active").forEach(step => {
+          step.classList.remove("active");
+          step.classList.add("done");
+          step.querySelector(".icon").innerHTML = svgCheck;
+        });
 
         const li = document.createElement("li");
         li.className = "progress-step active";
